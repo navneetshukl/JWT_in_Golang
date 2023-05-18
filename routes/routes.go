@@ -2,26 +2,69 @@ package routes
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
+	"time"
+
+	"github.com/golang-jwt/jwt"
 )
 
-type Message struct {
-	Status string `json:"status"`
-	Info   string `json:"info"`
+var jwtKey= []byte("secret_key") //byte Array
+
+var users = map[string]string{
+	"user1":"password1",
+	"user2":"password2",
 }
 
-func HandlePage(writer http.ResponseWriter, request *http.Request) {
-	writer.Header().Set("Content-Type", "application/json")
-	var message Message
-	err := json.NewDecoder(request.Body).Decode(&message)
-	if err != nil {
+type Credentials struct{
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type Claims struct{
+	Username string `json:"username"`
+	jwt.StandardClaims
+}
+
+func Login(w http.ResponseWriter, r *http.Request) {
+	var credentials Credentials
+	err:=json.NewDecoder(r.Body).Decode(&credentials)
+	if err!=nil{
+		w.WriteHeader(http.StatusBadRequest)
+		return;
+	}
+	expectedPassword,ok:=users[credentials.Username]
+
+	if !ok || expectedPassword!=credentials.Password{
+		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-	fmt.Println(message)
-	err = json.NewEncoder(writer).Encode(message)
-	if err != nil {
-		return
-	}
+
+	expirationTime :=time.Now().Add(time.Minute*5)
 	
+	claims:=&Claims{
+		Username: credentials.Username,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: expirationTime.Unix(),
+		},
+	}
+	token:=jwt.NewWithClaims(jwt.SigningMethodHS256,claims)
+	tokenString,err:=token.SignedString(jwtKey)
+
+	if err!=nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return;
+	}
+	http.SetCookie(w,&http.Cookie{
+		Name: "token",
+		Value: tokenString,
+		Expires: expirationTime,
+	})
+}
+
+func Home(w http.ResponseWriter, r *http.Request) {
+
+}
+
+func Refresh(w http.ResponseWriter, r *http.Request) {
+
 }
